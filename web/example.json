@@ -1,0 +1,21 @@
+{
+  "config": {
+    "niche": "Loja de moda feminina",
+    "city": "São Carlos,São Paulo,Brazil",
+    "service": "google"
+  },
+  "leads": [
+    {
+      "name": "SUBSTITUA PELO NOME REAL",
+      "category": "Loja de moda feminina",
+      "address": "SUBSTITUA PELO ENDEREÇO REAL",
+      "city": "São Carlos",
+      "phone": null,
+      "website": null,
+      "instagram": null,
+      "rating": null,
+      "reviews": null,
+      "source_url": null
+    }
+  ]
+}

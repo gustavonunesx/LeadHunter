@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Pesquisa e qualificação de empresas locais com evidências.">
+  <title>Radar Local · Prospecção</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="38" height="38"><span>radar<span class="brand-light">local</span><small>PROSPECÇÃO COM CONTEXTO</small></span></a>
+    <div class="workspace">Seu espaço de trabalho <span>LOCAL</span></div>
+    <nav aria-label="Navegação principal">
+      <button class="nav-item active" id="nav-leads"><span aria-hidden="true">◎</span> Explorar oportunidades</button>
+      <button class="nav-item" id="nav-integrations"><span aria-hidden="true">⚙</span> Integrações</button>
+      <a class="nav-item" href="/plan" target="_blank" rel="noopener"><span aria-hidden="true">▤</span> Plano do projeto</a>
+    </nav>
+    <div class="side-section"><span>CAMPANHAS RECENTES</span><button class="icon-button" id="side-new" aria-label="Criar campanha">+</button></div>
+    <div id="campaign-list" class="campaign-list"><p class="side-muted">Suas buscas aparecerão aqui.</p></div>
+    <div class="sidebar-bottom"><div class="local-symbol" aria-hidden="true">R</div><div><strong>Operação local</strong><small>Dados no seu computador</small></div><a href="/api/backup" title="Baixar backup" aria-label="Baixar backup">↓</a></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>Workspace <span class="slash">/</span> <strong id="breadcrumb">Oportunidades</strong></span><span class="version">RADAR LOCAL <b>1.0</b></span></header>
+    <section id="leads-view" class="content">
+      <div class="page-heading"><div><div class="eyebrow">INTELIGÊNCIA COMERCIAL</div><h1>Encontre sua próxima conversa.</h1><p>Empresas locais, contatos e motivos para uma boa abordagem.</p></div><button class="button primary" id="new-campaign"><span aria-hidden="true">+</span> Nova campanha</button></div>
+      <div class="campaign-heading"><div><h2 id="campaign-title">Suas oportunidades</h2><div id="campaign-subtitle" class="muted">Escolha um nicho e uma região para começar.</div></div><span id="source-badge" class="badge neutral">Nenhuma campanha</span></div>
+      <label class="mobile-history">Trocar campanha<select id="mobile-campaign"><option value="">Nenhuma campanha</option></select></label>
+      <div id="notice" class="notice hidden" role="status"></div>
+      <div id="run-progress" class="run-progress hidden"><div><span id="run-message"></span><button id="cancel-campaign" class="text-button">Cancelar busca</button></div><progress id="progress" max="100" value="0"></progress></div>
+      <div class="stats">
+        <article class="stat"><div>Empresas encontradas <span aria-hidden="true">◎</span></div><strong id="stat-total">0</strong><small>Na campanha selecionada</small></article>
+        <article class="stat"><div>Prioridade alta <span class="green" aria-hidden="true">↗</span></div><strong id="stat-high">0</strong><small>Oportunidades para conferir</small></article>
+        <article class="stat"><div>Contato disponível <span aria-hidden="true">◉</span></div><strong id="stat-contact">0</strong><small>Telefone ou Instagram confirmado</small></article>
+        <article class="stat"><div>Baixa visibilidade <span aria-hidden="true">⌕</span></div><strong id="stat-low">0</strong><small>Mediana acima de 10 na amostra</small></article>
+      </div>
+      <section class="results-card" aria-label="Lista de empresas">
+        <div class="results-heading"><div><h2>Lista de prospecção <span id="result-count">0</span></h2><p id="results-caption">Dados organizados para você decidir quem abordar.</p></div><div class="actions"><button class="button secondary" id="import-button">Importar JSON</button><button class="button secondary" id="export-button" disabled>↓ Exportar CSV</button></div></div>
+        <div class="filters"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar empresa, categoria ou endereço…" aria-label="Buscar empresas"></label><select id="priority-filter" aria-label="Filtrar prioridade"><option value="">Todas as prioridades</option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option><option value="review">Em revisão</option><option value="excluded">Fora do perfil</option></select><select id="stage-filter" aria-label="Filtrar etapa"><option value="">Todas as etapas</option><option value="new">Novo lead</option><option value="reviewing">Em análise</option><option value="contacted">Contatado</option><option value="interested">Interessado</option><option value="discarded">Descartado</option><option value="do_not_contact">Não contatar</option></select></div>
+        <div class="table-scroll"><table><thead><tr><th>Empresa</th><th>Presença no Google</th><th>Contatos</th><th>Prioridade</th><th>Etapa</th><th><span class="sr-only">Abrir ficha</span></th></tr></thead><tbody id="lead-rows"></tbody></table></div>
+        <div id="empty" class="empty"><div class="empty-radar" aria-hidden="true">◎</div><h3>Um nicho. Uma região. Novas oportunidades.</h3><p>Crie sua primeira campanha ou explore uma amostra fictícia para conhecer o painel.</p><button id="demo-button" class="button primary">Explorar demonstração</button><small>10 empresas fictícias · sem credenciais · sem custo</small></div>
+        <div class="table-footer"><span id="table-summary">Nenhuma empresa por enquanto</span><span>Prioridade comercial ≠ posição no Google</span></div>
+      </section>
+      <div class="bottom-note"><span>◈</span><p><strong>Evidências antes da abordagem.</strong> Uma busca é uma amostra. Confira região, identidade e contatos na ficha de cada empresa.</p><span id="usage-caption"></span></div>
+    </section>
+    <section id="integrations-view" class="content hidden">
+      <div class="eyebrow">CONFIGURAÇÃO</div><h1>Conecte suas fontes.</h1><p class="lead-text">As credenciais ficam no computador que executa o Radar Local.</p>
+      <div class="integration-grid"><article class="integration-card"><div class="integration-symbol">G</div><h2>Busca Maps e web</h2><span id="dfs-status" class="badge neutral">Verificando</span><p>Descoberta de empresas e pesquisa de candidatos de Instagram via DataForSEO.</p><ol><li>Crie sua conta e obtenha as credenciais da API.</li><li>Copie <code>.env.example</code> para <code>.env</code>.</li><li>Preencha <code>DATAFORSEO_LOGIN</code> e <code>DATAFORSEO_PASSWORD</code>.</li><li>Reinicie o aplicativo.</li></ol><a href="https://app.dataforseo.com/" target="_blank" rel="noopener" class="button secondary">Abrir DataForSEO</a></article><article class="integration-card"><div class="integration-symbol jev">J</div><h2>Qualificação com Jev</h2><span id="jev-status" class="badge neutral">Verificando</span><p>Analisa a aderência ao nicho. Casos incertos continuam disponíveis para revisão.</p><ol><li>Obtenha uma chave da TypeSafe.</li><li>Preencha <code>TYPESAFE_API_KEY</code> no <code>.env</code>.</li><li>Mantenha o modelo versionado ou ajuste após validar.</li><li>Reinicie o aplicativo.</li></ol><a href="https://console.typesafe.ai/keys" target="_blank" rel="noopener" class="button secondary">Abrir TypeSafe</a></article></div>
+      <div class="info-card"><h2>Controle de consumo</h2><p id="limits-caption"></p><p>Os limites contam tentativas, inclusive falhas. Chamadas pagas não se repetem automaticamente. Tokens Jev e custos informados pela busca são registrados separadamente.</p></div>
+      <div class="info-card"><h2>O que esta versão valida</h2><p>A coleta real depende das suas credenciais e do acesso aos provedores. A demonstração usa dados fictícios. Jev está integrado à classificação; a navegação autônoma pelo Maps é uma etapa posterior do plano.</p></div>
+    </section>
+  </main>
+  <dialog id="campaign-dialog" class="modal"><form id="campaign-form"><div class="modal-top"><div><div class="eyebrow">NOVA PESQUISA</div><h2>Defina seu próximo mercado.</h2></div><button type="button" class="icon-button close-dialog" aria-label="Fechar">×</button></div>
+    <div class="form-grid"><label>Nicho<input name="niche" required maxlength="100" value="Loja de moda feminina"></label><label>Cidade e região<input name="city" required maxlength="100" value="São Carlos,São Paulo,Brazil"><small>Na coleta real, use o nome da localidade reconhecido pelo provedor.</small></label><label>Serviço que você oferece<select name="service"><option value="google">Presença no Google</option><option value="website">Criação de site</option><option value="marketing">Marketing digital</option></select></label><label>Quantidade máxima<input name="limit" type="number" min="1" max="50" value="10" required></label></div>
+    <fieldset class="source-options"><legend>Como deseja pesquisar?</legend><label><input name="source" type="radio" value="demo" checked><span><strong>Demonstração</strong><small>Dados fictícios, sem chamadas externas</small></span></label><label><input name="source" type="radio" value="live"><span><strong>Coleta real</strong><small>Usa suas credenciais e saldo de API</small></span></label></fieldset>
+    <details class="advanced"><summary>Ajustar termos, pontos e enriquecimento</summary><label>Termos de busca<textarea name="keywords" rows="3" placeholder="Um termo por linha, até três. Em branco: nicho + cidade."></textarea></label><label>Pontos de busca (opcional)<textarea name="coordinates" rows="2" placeholder="latitude,longitude,zoom — um por linha. Ex.: -22.0174,-47.8909,14z"></textarea><small>Sem pontos, a busca usa a localidade informada.</small></label><label class="check"><input name="enrich" type="checkbox" checked> Procurar Instagram em resultados públicos</label><label class="check"><input name="use_jev" type="checkbox" checked> Usar Jev para analisar o nicho, quando configurado</label></details>
+    <p class="form-hint" id="call-estimate">Demonstração sem custo de API.</p><p class="form-error hidden" id="campaign-error" role="alert"></p><div class="modal-footer"><button type="button" class="button secondary close-dialog">Cancelar</button><button type="submit" class="button primary" id="campaign-submit">Iniciar campanha</button></div>
+  </form></dialog>
+  <dialog id="lead-dialog" class="drawer"><div id="lead-detail"></div></dialog>
+  <dialog id="import-dialog" class="modal"><div class="modal-top"><div><div class="eyebrow">SUA BASE DE CONTATOS</div><h2>Importar empresas</h2></div><button class="icon-button close-dialog" aria-label="Fechar">×</button></div><p>Selecione um arquivo JSON com até 100 empresas. Dados ausentes ficam sem informação; nenhuma posição de busca é presumida.</p><p><a href="/example.json" download>Baixar modelo de importação</a></p><label class="file-label">Arquivo JSON<input id="import-file" type="file" accept=".json,application/json"></label><p id="import-error" class="form-error hidden" role="alert"></p><div class="modal-footer"><button class="button secondary close-dialog">Cancelar</button><button id="confirm-import" class="button primary">Importar arquivo</button></div></dialog>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="/app.js" defer></script>
+</body></html>
