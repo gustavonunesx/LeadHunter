@@ -196,5 +196,8 @@ class Store:
 
     def backup(self, destination):
         with self.connect() as db:
-            with sqlite3.connect(destination) as target:
+            target = sqlite3.connect(destination)
+            try:
                 db.backup(target)
+            finally:
+                target.close()
