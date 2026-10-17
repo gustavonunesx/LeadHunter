@@ -33,6 +33,7 @@ O primeiro entregável é um aplicativo que roda no computador do operador, com 
 3. Grade geográfica maior e histórico de evolução em várias datas.
 4. Calibração da prioridade com resultados reais de prospecção.
 5. Múltiplos usuários, banco remoto e execução agendada somente se a operação justificar.
+6. Gerador de prévias de site por lead, em segundo plano; plano detalhado em `docs/PLANO_SITES.md`.
 
 Envio automático de mensagens, negociação, anúncios e acesso a contas privadas não fazem parte desta primeira versão. A lista de leads é entregue para revisão e abordagem do operador. O porte PME é um critério de prospecção, não uma classificação fiscal comprovada pelo Maps.
 

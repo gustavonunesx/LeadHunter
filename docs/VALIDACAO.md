@@ -55,26 +55,42 @@ Resultado da suíte: **25 testes aprovados**. Foram exercitados:
 
 Vários cenários estão agrupados no mesmo teste. Os 25 testes incluem contratos simulados, não validação comercial do provedor.
 
+## Validação em Windows e navegador — 16/10/2026
+
+Ambiente: Windows 11, Python 3.14.2, Node 24.13, Playwright 1.64 com Chromium (desktop 1366×850 e celular emulado 390×844). Banco de teste em diretório temporário (`--data-dir`).
+
+- Suíte unitária: **25/25 aprovados no Windows** após correção do backup.
+- Teste de ponta a ponta no navegador: **19/19 verificações aprovadas** após correções: demonstração com 10 empresas e selo de dados fictícios, integrações sem chaves, busca, filtros de prioridade e etapa, ficha, notas e etapa salvas, persistência após recarregar, exportação CSV, backup pelo painel (`/api/backup` devolve SQLite válido), importação do JSON de modelo, recusa de coleta real sem credenciais (“Nenhuma busca foi iniciada”), estimativa de chamadas (3 empresas e 1 termo = até 4 chamadas), layout de celular sem alargamento e nenhum erro de JavaScript.
+
+Defeitos encontrados e corrigidos (commit `baa5bbd`):
+
+1. `Store.backup()` não fechava a conexão de destino; no Windows o arquivo ficava bloqueado e o backup falhava.
+2. Opção “Alta” ausente no filtro de prioridade por uma tag `<option>` malformada.
+3. No celular, o texto acessível do cabeçalho da tabela escapava da área rolável e alargava a página para 749 px.
+4. Faltava `.gitignore`; `.env`, `data/` e `__pycache__/` agora são ignorados.
+
+## Pendente: validação ao vivo com DataForSEO (adiada)
+
+Status em 16/10/2026: **adiada** — o operador não conseguiu acessar a conta DataForSEO. Nenhuma consulta paga foi feita. Retomar com o roteiro abaixo.
+
+1. Em app.dataforseo.com → **API Access**, copiar login e senha **da API** (diferentes do login do site) e conferir saldo.
+2. `Copy-Item .env.example .env` e preencher `DATAFORSEO_LOGIN` e `DATAFORSEO_PASSWORD` (`TYPESAFE_API_KEY` é opcional).
+3. `py -3 app.py` → em **Integrações**, o DataForSEO deve deixar de mostrar “Aguardando credenciais”.
+4. Nova campanha → **Coleta real**, quantidade 3, um termo (ex.: `loja de roupa feminina São Carlos`), cidade `São Carlos,São Paulo,Brazil`. A estimativa deve indicar até 4 chamadas.
+5. Se a localidade não for reconhecida, usar o ponto `-22.0174,-47.8909,14z` nos ajustes avançados.
+6. Conferir manualmente identidade, endereço e telefone no Google Maps; não confirmar Instagram só por nome parecido.
+7. Registrar mensagens de erro, custo informado e tempo; depois ampliar para 10 empresas (Fase C).
+
 ## Ainda não verificado ao vivo
 
-- Autenticação, saldo e permissões da conta DataForSEO.
+- Autenticação, saldo e permissões da conta DataForSEO (ver seção acima).
 - Disponibilidade efetiva do modelo Jev na conta do operador.
 - Nome de localidade reconhecido pelo provedor para o primeiro piloto.
 - Dados atuais e identidade das dez empresas reais.
 - Tempo e custo reais por campanha.
-- Inspeção visual/funcional em navegador de desktop e celular: infraestrutura de preview apropriada indisponível nesta execução. HTML e JavaScript foram validados por sintaxe e HTTP, mas isso não substitui um teste visual.
 - Registro e execução de WebMCP em navegador compatível: não verificado em contexto real.
-- Execução em Windows: instruções fornecidas; testes desta entrega rodaram em Linux.
 
 Nenhuma mensagem foi enviada a empresas. Nenhuma consulta paga foi executada. Dados de demonstração não correspondem a locais reais.
-
-## Próximo teste real
-
-1. Abrir a demonstração e conferir interface, ficha, filtros, notas e exportação no próprio navegador.
-2. Configurar as chaves no `.env` local e reiniciar.
-3. Fazer uma campanha com três empresas e um termo, para validar credenciais e localidade com consumo limitado.
-4. Conferir identidade, categoria, região, contatos e fontes; não confirmar Instagram apenas por nome parecido.
-5. Ampliar para dez empresas e registrar erros, cobertura e custos antes de aumentar volume.
 
 ## Planejado, não implementado nesta versão
 
