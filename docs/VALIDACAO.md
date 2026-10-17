@@ -79,6 +79,22 @@ Defeitos encontrados e corrigidos (commit `baa5bbd`):
 
 Ainda não validado: fotos (S2), leads reais e uso prolongado frente ao limite da assinatura.
 
+## Pendente: avaliação de prévias com empresas reais (adiada)
+
+Status em 16/10/2026: **adiada** pelo operador. Depende de leads reais — da validação DataForSEO (seção abaixo) ou de um JSON importado com empresas reais que você tenha autorização para usar.
+
+1. Ter uma campanha real (ou importada) com pelo menos 5 empresas, de preferência com telefone e sem site informado.
+2. Para cada uma: ficha → **Criar site** → **Claude · sua assinatura**, objetivo adequado ao negócio.
+3. Abrir cada prévia em desktop e no celular (modo responsivo do navegador) e conferir:
+   - nome, endereço, telefone e nota idênticos ao Google Maps;
+   - botão WhatsApp só aparece para celular; “Ligar” abre o número certo;
+   - nenhuma afirmação inventada fora da lista “Confirmar: …” da ficha;
+   - contraste legível e nada quebrado no celular.
+4. Anotar por prévia: tempo de geração, tokens (aparecem em `usage` na API `/api/sites`), afirmações a confirmar e notas de qualidade (0–5).
+5. Observar o consumo da assinatura depois das 5 prévias (Claude Code → `/usage`) para calibrar `MAX_SITES_PER_DAY`.
+
+Aceite (fase S2 do plano): 5/5 sem dado factual divergente e sem afirmação sem marcação.
+
 ## Pendente: validação ao vivo com DataForSEO (adiada)
 
 Status em 16/10/2026: **adiada** — o operador não conseguiu acessar a conta DataForSEO. Nenhuma consulta paga foi feita. Retomar com o roteiro abaixo.
