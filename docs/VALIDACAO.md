@@ -69,6 +69,16 @@ Defeitos encontrados e corrigidos (commit `baa5bbd`):
 3. No celular, o texto acessível do cabeçalho da tabela escapava da área rolável e alargava a página para 749 px.
 4. Faltava `.gitignore`; `.env`, `data/` e `__pycache__/` agora são ignorados.
 
+## Prévias de site — fase S1 — 16/10/2026
+
+- Suíte unitária: **33/33 aprovados** (8 novos: telefone/WhatsApp, renderização com escape, brief limitado e sem injeção, contraste AA, motor Claude Code com contexto enxuto e sem `ANTHROPIC_API_KEY`, erro e cancelamento, reinício sem repetição, caminhos da prévia, jornada HTTP com CSP, limite diário e exclusão).
+- Playwright: **14/14** — criar prévia pela ficha, bandeja sem bloquear o painel, aviso de conclusão, prévia em nova aba sem scripts e sem erros de CSP, desktop e celular, verificações na ficha, exclusão de versão.
+- Teste real com a assinatura (Claude Code 2.1.301, Opus 5.5, esforço alto) em empresa fictícia: concluído em 28 s, ~4,9 mil tokens de entrada e ~2,4 mil de saída, 5 afirmações listadas para confirmar, todas as verificações automáticas aprovadas.
+- Corrigido teste intermitente no Windows: o servidor agora lê o corpo da requisição antes de recusá-la com 403 (antes, 2 em 12 execuções falhavam com conexão anulada).
+- Criado `.env.example`, que o README citava mas não existia.
+
+Ainda não validado: fotos (S2), leads reais e uso prolongado frente ao limite da assinatura.
+
 ## Pendente: validação ao vivo com DataForSEO (adiada)
 
 Status em 16/10/2026: **adiada** — o operador não conseguiu acessar a conta DataForSEO. Nenhuma consulta paga foi feita. Retomar com o roteiro abaixo.

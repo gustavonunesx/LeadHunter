@@ -14,8 +14,11 @@ from radar.domain import STAGES, validate_campaign, safe_url, instagram_url, num
 from radar.storage import Store
 from radar.providers import Providers, load_settings
 from radar.engine import Engine
+from radar.sites import SiteWorker, validate_site_options
+from radar.writers import build_writers
 
 ROOT=Path(__file__).resolve().parent
+PREVIEW_CSP="default-src 'none'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
 
 
 def filter_leads(leads,query):
@@ -63,13 +66,13 @@ def validate_import(data):
     return config,leads
 
 
-def make_handler(store,engine,settings,token):
+def make_handler(store,engine,settings,token,sites=None):
     class Handler(BaseHTTPRequestHandler):
         server_version="RadarLocal/1.0"
         def log_message(self,*args):
             pass
 
-        def send(self,status,body,content_type="application/json; charset=utf-8",filename=None):
+        def send(self,status,body,content_type="application/json; charset=utf-8",filename=None,csp=None,headers=None):
             if not isinstance(body,bytes):
                 body=json.dumps(body,ensure_ascii=False).encode()
             self.send_response(status)
@@ -78,7 +81,9 @@ def make_handler(store,engine,settings,token):
             self.send_header("Cache-Control","no-store")
             self.send_header("X-Content-Type-Options","nosniff")
             self.send_header("Referrer-Policy","no-referrer")
-            self.send_header("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+            self.send_header("Content-Security-Policy",csp or "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+            for key,value in (headers or {}).items():
+                self.send_header(key,value)
             if filename:
                 self.send_header("Content-Disposition",f'attachment; filename="{filename}"')
             self.end_headers()
@@ -87,15 +92,21 @@ def make_handler(store,engine,settings,token):
             except (BrokenPipeError,ConnectionResetError):
                 pass
 
+        def reject(self,message):
+            # Drain a small unread body first; closing with unread data resets the connection on Windows.
+            length=int(self.headers.get("Content-Length") or 0)
+            if 0<length<=1_000_000:self.rfile.read(length)
+            self.send(403,{"error":message});return False
+
         def guard(self,write=False):
             port=self.server.server_address[1]
             if self.headers.get("Host") not in {f"127.0.0.1:{port}",f"localhost:{port}"}:
-                self.send(403,{"error":"Acesso permitido somente pelo endereço local do aplicativo."});return False
+                return self.reject("Acesso permitido somente pelo endereço local do aplicativo.")
             origin=self.headers.get("Origin")
             if origin and origin not in {f"http://127.0.0.1:{port}",f"http://localhost:{port}"}:
-                self.send(403,{"error":"Origem não autorizada."});return False
+                return self.reject("Origem não autorizada.")
             if write and not secrets.compare_digest(self.headers.get("X-Radar-Token",""),token):
-                self.send(403,{"error":"Atualize a página antes de continuar."});return False
+                return self.reject("Atualize a página antes de continuar.")
             return True
 
         def body(self):
@@ -114,9 +125,20 @@ def make_handler(store,engine,settings,token):
             p=urlparse(self.path); parts=p.path.strip("/").split("/"); query=parse_qs(p.query)
             try:
                 if p.path=="/api/status":
-                    return self.send(200,{"token":token,"dataforseo":bool(settings["dfs_login"] and settings["dfs_password"]),"jev":bool(settings["jev_key"]),"jev_model":settings["jev_model"],"run_limit":settings["run_limit"],"daily_limit":settings["daily_limit"],"version":"1.0.0"})
+                    engines=[{"name":w.name,"label":w.label,"available":w.available()} for w in sites.writers.values()] if sites else []
+                    return self.send(200,{"token":token,"dataforseo":bool(settings["dfs_login"] and settings["dfs_password"]),"jev":bool(settings["jev_key"]),"jev_model":settings["jev_model"],"run_limit":settings["run_limit"],"daily_limit":settings["daily_limit"],"version":"1.0.0",
+                                          "site_engines":engines,"site_engine":settings.get("site_engine"),"site_model":settings.get("site_model"),"max_sites_per_day":settings.get("max_sites_per_day")})
                 if p.path=="/api/campaigns":
                     return self.send(200,{"campaigns":store.campaigns()})
+                if p.path=="/api/sites":
+                    return self.send(200,{"sites":store.sites()})
+                if sites and len(parts)>=2 and parts[0]=="sites":
+                    if len(parts)==2 and not p.path.endswith("/"):
+                        return self.send(301,b"",headers={"Location":f"/sites/{parts[1]}/"})
+                    path=sites.file(parts[1],"/".join(parts[2:]))
+                    if not path:return self.send(404,{"error":"Prévia não encontrada."})
+                    mime={".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8"}.get(path.suffix) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+                    return self.send(200,path.read_bytes(),mime,csp=PREVIEW_CSP)
                 if len(parts)>=3 and parts[:2]==["api","campaigns"]:
                     cid=parts[2]; campaign=store.campaign(cid)
                     if not campaign:return self.send(404,{"error":"Campanha não encontrada."})
@@ -166,6 +188,21 @@ def make_handler(store,engine,settings,token):
                     if campaign["state"] not in {"queued","running"}:raise ValueError("Esta campanha já foi finalizada.")
                     store.update_campaign(parts[2],cancel_requested=1)
                     return self.send(200,{"ok":True})
+                if sites and len(parts)==4 and parts[:2]==["api","leads"] and parts[3]=="sites":
+                    lead=store.lead(parts[2])
+                    if not lead:return self.send(404,{"error":"Empresa não encontrada."})
+                    engine_name,options=validate_site_options(data,sites.writers,settings["site_engine"])
+                    if engine_name!="offline" and store.sites_today()>=settings["max_sites_per_day"]:
+                        raise ValueError(f"Limite de {settings['max_sites_per_day']} sites com IA por dia atingido. Ajuste MAX_SITES_PER_DAY no .env se precisar.")
+                    cid=data.get("campaign_id")
+                    if cid not in store.campaigns_for_lead(lead["id"]):cid=(store.campaigns_for_lead(lead["id"]) or [None])[0]
+                    return self.send(201,{"id":store.create_site(lead["id"],cid,engine_name,options)})
+                if len(parts)==4 and parts[:2]==["api","sites"] and parts[3]=="cancel":
+                    site=store.site(parts[2])
+                    if not site:return self.send(404,{"error":"Site não encontrado."})
+                    if site["state"] not in {"queued","running"}:raise ValueError("Esta geração já terminou.")
+                    store.update_site(parts[2],cancel_requested=1,message="Cancelando…")
+                    return self.send(200,{"ok":True})
                 return self.send(404,{"error":"Ação não encontrada."})
             except (ValueError,TypeError,KeyError) as exc:
                 return self.send(400,{"error":str(exc) if isinstance(exc,ValueError) else "Campos inválidos."})
@@ -197,11 +234,23 @@ def make_handler(store,engine,settings,token):
         def do_DELETE(self):
             if not self.guard(True):return
             parts=urlparse(self.path).path.strip("/").split("/")
+            if len(parts)==3 and parts[:2]==["api","sites"]:
+                site=store.site(parts[2])
+                if not site:return self.send(404,{"error":"Site não encontrado."})
+                if site["state"] in {"queued","running"}:return self.send(409,{"error":"Cancele a geração antes de excluir."})
+                store.delete_site(site["id"])
+                if sites:sites.remove_files(site["id"])
+                return self.send(200,{"ok":True})
             if len(parts)!=3 or parts[:2]!=["api","leads"]:return self.send(404,{"error":"Ação não encontrada."})
             ids=store.campaigns_for_lead(parts[2])
             if any(store.campaign(cid)["state"] in {"running","queued"} for cid in ids):
                 return self.send(409,{"error":"Aguarde ou cancele a campanha antes de excluir."})
+            lead_sites=store.sites(parts[2])
+            if any(s["state"] in {"queued","running"} for s in lead_sites):
+                return self.send(409,{"error":"Aguarde ou cancele a geração de site antes de excluir."})
             store.delete_lead(parts[2])
+            for site in lead_sites:
+                if sites:sites.remove_files(site["id"])
             for cid in ids:engine.recalculate(cid)
             return self.send(200,{"ok":True})
     return Handler
@@ -216,16 +265,17 @@ def main():
     store=Store(args.data_dir/"radar.sqlite3")
     providers=Providers(store,settings)
     engine=Engine(store,providers,settings)
-    handler=make_handler(store,engine,settings,secrets.token_urlsafe(32))
+    sites=SiteWorker(store,build_writers(settings),args.data_dir/"sites")
+    handler=make_handler(store,engine,settings,secrets.token_urlsafe(32),sites)
     server=ThreadingHTTPServer(("127.0.0.1",args.port),handler)
     server.daemon_threads=True
-    engine.start()
+    engine.start();sites.start()
     print(f"Radar Local disponível em http://127.0.0.1:{args.port}",flush=True)
     print("Use Ctrl+C para encerrar. Dados preservados em",args.data_dir,flush=True)
     try:server.serve_forever()
     except KeyboardInterrupt:pass
     finally:
-        engine.stopped.set();server.server_close()
+        engine.stopped.set();sites.stopped.set();server.server_close()
 
 
 if __name__=="__main__":main()

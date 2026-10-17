@@ -40,6 +40,15 @@ class Store:
                 state TEXT NOT NULL DEFAULT 'pending', cost REAL, tokens INTEGER, model TEXT);
               CREATE INDEX IF NOT EXISTS idx_api_calls_campaign ON api_calls(campaign_id);
               CREATE INDEX IF NOT EXISTS idx_api_calls_date ON api_calls(created_at);
+              CREATE TABLE IF NOT EXISTS sites (
+                id TEXT PRIMARY KEY, lead_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+                campaign_id TEXT, version INTEGER NOT NULL, engine TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, state TEXT NOT NULL,
+                message TEXT NOT NULL DEFAULT '', progress INTEGER NOT NULL DEFAULT 0,
+                cancel_requested INTEGER NOT NULL DEFAULT 0, options TEXT NOT NULL DEFAULT '{}',
+                brief TEXT NOT NULL DEFAULT '{}', checks TEXT NOT NULL DEFAULT '[]', usage TEXT NOT NULL DEFAULT '{}');
+              CREATE INDEX IF NOT EXISTS idx_sites_lead ON sites(lead_id);
+              UPDATE schema_version SET version=2 WHERE version<2;
               PRAGMA optimize;
             ''')
 
@@ -61,6 +70,7 @@ class Store:
         with self.connect() as db:
             db.execute("UPDATE campaigns SET state='interrupted',message='Execução interrompida pelo reinício. Resultados preservados.',updated_at=? WHERE state IN ('running','importing')", (now(),))
             db.execute("UPDATE api_calls SET state='unknown' WHERE state='pending'")
+            db.execute("UPDATE sites SET state='interrupted',message='Geração interrompida pelo reinício. Crie uma nova versão quando quiser.',updated_at=? WHERE state='running'", (now(),))
 
     def create_campaign(self, config, state="queued"):
         cid = uuid.uuid4().hex
@@ -193,6 +203,54 @@ class Store:
     def usage(self, cid):
         with self.connect() as db:
             return [dict(r) for r in db.execute("SELECT provider,count(*) AS calls,sum(cost) AS cost,sum(tokens) AS tokens,sum(CASE WHEN state!='success' THEN 1 ELSE 0 END) AS incomplete FROM api_calls WHERE campaign_id=? GROUP BY provider",(cid,))]
+
+    def create_site(self, lid, cid, engine, options):
+        sid = uuid.uuid4().hex
+        with self.connect() as db:
+            version = db.execute("SELECT coalesce(max(version),0)+1 FROM sites WHERE lead_id=?", (lid,)).fetchone()[0]
+            db.execute("INSERT INTO sites(id,lead_id,campaign_id,version,engine,created_at,updated_at,state,message,options) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                       (sid, lid, cid, version, engine, now(), now(), "queued", "Na fila.", json.dumps(options, ensure_ascii=False)))
+        return sid
+
+    def site(self, sid):
+        with self.connect() as db:
+            row = db.execute("SELECT s.*,l.data AS lead_data FROM sites s JOIN leads l ON l.id=s.lead_id WHERE s.id=?", (sid,)).fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        for key in ("options", "brief", "checks", "usage"):
+            row[key] = json.loads(row[key])
+        row["lead_name"] = json.loads(row.pop("lead_data")).get("name")
+        return row
+
+    def sites(self, lid=None, limit=50):
+        with self.connect() as db:
+            ids = [r[0] for r in db.execute("SELECT id FROM sites WHERE ?1 IS NULL OR lead_id=?1 ORDER BY created_at DESC,rowid DESC LIMIT ?2", (lid, limit))]
+        return [self.site(sid) for sid in ids]
+
+    def update_site(self, sid, **fields):
+        allowed = {"state", "message", "progress", "cancel_requested", "brief", "checks", "usage"}
+        if not fields.keys() <= allowed:
+            raise ValueError("Invalid site update")
+        for key in ("brief", "checks", "usage"):
+            if key in fields:
+                fields[key] = json.dumps(fields[key], ensure_ascii=False)
+        fields["updated_at"] = now()
+        with self.connect() as db:
+            db.execute("UPDATE sites SET " + ",".join(f"{k}=?" for k in fields) + " WHERE id=?", [*fields.values(), sid])
+
+    def queued_site(self):
+        with self.connect() as db:
+            row = db.execute("SELECT id FROM sites WHERE state='queued' ORDER BY rowid LIMIT 1").fetchone()
+        return row[0] if row else None
+
+    def sites_today(self):
+        with self.connect() as db:
+            return db.execute("SELECT count(*) FROM sites WHERE engine!='offline' AND created_at>=?", (now()[:10],)).fetchone()[0]
+
+    def delete_site(self, sid):
+        with self.connect() as db:
+            db.execute("DELETE FROM sites WHERE id=?", (sid,))
 
     def backup(self, destination):
         with self.connect() as db:

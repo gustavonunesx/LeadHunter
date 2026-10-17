@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="$lang">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>$title</title>
+  <meta name="description" content="$description">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="t-$template">
+  <header class="top">
+    <div class="wrap top-inner">
+      <span class="logo">$name</span>
+      <nav aria-label="Seções"><a href="#sobre">Sobre</a><a href="#destaques">Diferenciais</a><a href="#contato">Contato</a></nav>
+    </div>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="wrap hero-inner">
+        <div class="hero-text">
+          <p class="kicker">$kicker</p>
+          <h1>$headline</h1>
+          <p class="lead">$subtitle</p>
+          <div class="actions">$buttons</div>
+        </div>
+        $cover
+      </div>
+    </section>
+    <section class="about" id="sobre">
+      <div class="wrap narrow"><h2>Sobre</h2><p>$about</p></div>
+    </section>
+    <section class="highlights" id="destaques">
+      <div class="wrap"><h2>Por que escolher</h2><div class="cards">$highlights</div></div>
+    </section>
+    <div class="wrap">$gallery</div>
+    <section class="contact" id="contato">
+      <div class="wrap contact-inner">
+        <div><h2>$cta</h2><div class="actions">$buttons</div></div>
+        <div class="contact-info">$rating$visit</div>
+      </div>
+    </section>
+  </main>
+  <footer class="foot"><div class="wrap foot-inner"><span>$name</span>$instagram</div></footer>
+</body>
+</html>

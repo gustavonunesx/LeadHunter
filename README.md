@@ -134,6 +134,15 @@ Não há retry automático de chamadas pagas. Ao cancelar, a chamada já em anda
 
 Mensagens de credencial, saldo, nome de localidade e rede indicam falha real; o aplicativo nunca substitui uma campanha real por dados fictícios.
 
+## Prévias de site
+
+Na ficha de qualquer empresa, **Criar site** gera uma prévia de site de uma página em segundo plano. Acompanhe pela bandeja **Prévias de site** no canto da tela e continue usando o painel; a prévia abre em nova aba.
+
+- **Claude · sua assinatura** (padrão): usa o Claude Code instalado e logado neste computador. Conta no limite de uso da sua assinatura Claude, não em créditos de API. Uma prévia sem fotos levou cerca de 30 segundos no teste.
+- **Textos padrão · sem IA**: textos neutros montados com os dados do cadastro. Padrão para empresas de demonstração.
+
+Nome, endereço, telefone e avaliações entram no site direto do cadastro; a IA escreve apenas os textos e escolhe o visual. O que a IA escrever sem base nos dados aparece na ficha como “Confirmar: …”. A prévia fica só no seu computador (`data/sites/`) e não é publicada. Configure em `.env` (`SITE_ENGINE`, `SITE_MODEL`, `MAX_SITES_PER_DAY`); detalhes e próximas fases em `docs/PLANO_SITES.md`.
+
 ## Backup e restauração
 
 Use o botão de download no rodapé lateral do painel para baixar um backup consistente. Alternativamente, com o aplicativo fechado, copie `data/radar.sqlite3`.

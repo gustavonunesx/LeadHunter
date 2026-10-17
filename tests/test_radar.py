@@ -8,12 +8,15 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from http.server import ThreadingHTTPServer
+import unittest.mock
 from unittest.mock import Mock
 
 from radar.domain import identity, local_fit, score_lead, validate_campaign, instagram_url
 from radar.storage import Store
 from radar.engine import Engine
 from radar.providers import Providers, ProviderError, parse_maps
+from radar.sites import SiteWorker, build_dossier, contrast, normalize_brief, phone_links, render
+from radar.writers import ClaudeCodeWriter, OfflineWriter, offline_brief, Cancelled as WriterCancelled
 from app import make_handler, csv_bytes, filter_leads, validate_import
 
 
@@ -223,6 +226,134 @@ class HTTPTests(unittest.TestCase):
         with self.request('/api/status') as r:data=json.load(r)
         self.assertNotIn('dfs_password',data);self.assertNotIn('jev_key',data)
         with self.assertRaises(urllib.error.HTTPError):self.request('/.env')
+
+
+SITE_SETTINGS={**SETTINGS,'site_engine':'offline','site_model':'claude-opus-5-5','site_effort':'high','site_timeout':5,'max_sites_per_day':1,'claude_code_path':''}
+
+
+class FakeClaude:
+    """Popen stand-in: writes a canned Claude Code JSON result to the stdout file."""
+    def __init__(self,payload,finishes=True):
+        self.payload,self.finishes,self.calls,self.killed=payload,finishes,[],False
+    def __call__(self,cmd,stdin,stdout,stderr,cwd,env):
+        self.calls.append({'cmd':cmd,'env':env,'prompt':stdin.read().decode()})
+        stdout.write(json.dumps(self.payload).encode());return self
+    def poll(self):return 0 if self.finishes or self.killed else None
+    def kill(self):self.killed=True
+    def wait(self):return 0
+
+
+def claude_writer(runner):
+    writer=ClaudeCodeWriter({**SITE_SETTINGS,'claude_code_path':__file__},runner);return writer
+
+
+class SiteTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.store=Store(Path(self.temp.name)/'test.db')
+        self.cid=self.store.create_campaign(campaign(source='import'))
+        self.lid=self.store.upsert_lead(self.cid,company(name='Loja <script>alert(1)</script>',phone='(16) 99123-4567',rating=4.7,reviews=31),'import')
+        self.writers={'offline':OfflineWriter()}
+        self.worker=SiteWorker(self.store,self.writers,Path(self.temp.name)/'sites')
+    def tearDown(self):self.temp.cleanup()
+
+    def generate(self,engine='offline',objective='contato'):
+        sid=self.store.create_site(self.lid,self.cid,engine,{'objective':objective,'instructions':''})
+        self.worker.run(sid);return self.store.site(sid)
+
+    def test_phone_links_whatsapp_only_for_mobile(self):
+        self.assertEqual(phone_links('(16) 99123-4567'),('tel:+5516991234567','https://wa.me/5516991234567'))
+        self.assertEqual(phone_links('+55 16 3371-0000'),('tel:+551633710000',None))
+        self.assertEqual(phone_links(None),(None,None))
+
+    def test_offline_site_uses_registered_facts_and_escapes_everything(self):
+        site=self.generate()
+        self.assertEqual(site['state'],'completed',site['message'])
+        page=(self.worker.path(site['id'])/'index.html').read_text(encoding='utf-8')
+        self.assertNotIn('<script',page);self.assertIn('Loja &lt;script&gt;',page)
+        self.assertIn('Rua Teste 1',page);self.assertIn('https://wa.me/5516991234567',page);self.assertIn('4,7',page)
+        self.assertTrue(all(c['ok'] for c in site['checks'][:-1]))
+        self.assertFalse((self.worker.path(site['id'])/'prompt.txt').exists())
+
+    def test_brief_from_model_is_bounded_and_cannot_inject(self):
+        dossier=build_dossier(self.store.lead(self.lid),None,{'objective':'contato'})
+        brief=normalize_brief({'design':{'template':'evil','paleta':{'fundo':'#ffffff','texto':'#fefefe','destaque':'red','suave':'#ffffff'},'fonte_titulos':'Comic'},
+                               'conteudo':{'titulo':'<img src=x onerror=alert(1)>'+'x'*200,'destaques':[{'titulo':'só um','texto':'item'}]},'fotos':[{'arquivo':'../../app.py','uso':'capa','texto_alternativo':'x'}]},dossier)
+        self.assertIn(brief['design']['template'],('vitrine','editorial','minimal'))
+        self.assertLessEqual(len(brief['conteudo']['titulo']),70);self.assertEqual(brief['fotos'],[])
+        self.assertGreaterEqual(len(brief['conteudo']['destaques']),2)
+        out=Path(self.temp.name)/'render'
+        page,palette,notes=render(self.store.lead(self.lid),brief,{'objective':'contato'},out)
+        self.assertNotIn('<img src=x',page);self.assertGreaterEqual(contrast(palette['texto'],palette['fundo']),4.5);self.assertTrue(notes)
+
+    def test_claude_code_writer_runs_lean_and_parses_structured_output(self):
+        brief=offline_brief({'nome':'Loja','cidade':'São Carlos'});brief['afirmacoes_a_confirmar']=['Atende desde 1990']
+        runner=FakeClaude({'type':'result','subtype':'success','is_error':False,'structured_output':brief,'num_turns':2,'total_cost_usd':.3,
+                           'modelUsage':{'claude-opus-5-5':{'inputTokens':3000,'outputTokens':9000,'cacheReadInputTokens':0,'cacheCreationInputTokens':2000}}})
+        self.writers['claude_code']=claude_writer(runner)
+        with unittest.mock.patch.dict('os.environ',{'ANTHROPIC_API_KEY':'sk-should-not-leak'}):
+            site=self.generate('claude_code')
+        self.assertEqual(site['state'],'completed',site['message'])
+        cmd=runner.calls[0]['cmd']
+        for flag in ('--json-schema','--strict-mcp-config','--disable-slash-commands','--system-prompt','--no-session-persistence'):self.assertIn(flag,cmd)
+        self.assertEqual(cmd[cmd.index('--tools')+1],'');self.assertNotIn('ANTHROPIC_API_KEY',runner.calls[0]['env'])
+        self.assertIn('<dossie>',runner.calls[0]['prompt'])
+        self.assertEqual(site['usage']['output_tokens'],9000);self.assertEqual(site['brief']['afirmacoes_a_confirmar'],['Atende desde 1990'])
+
+    def test_claude_code_error_and_cancel_are_reported(self):
+        self.writers['claude_code']=claude_writer(FakeClaude({'type':'result','subtype':'success','is_error':True,'result':'Not logged in'}))
+        site=self.generate('claude_code')
+        self.assertEqual(site['state'],'failed');self.assertIn('Not logged in',site['message'])
+        runner=FakeClaude({},finishes=False);writer=claude_writer(runner)
+        work=Path(self.temp.name)/'cancel';work.mkdir()
+        with self.assertRaises(WriterCancelled):writer.write({'nome':'Loja'},[],work,lambda:True)
+        self.assertTrue(runner.killed)
+
+    def test_restart_interrupts_running_site_without_retry(self):
+        sid=self.store.create_site(self.lid,self.cid,'claude_code',{'objective':'contato'})
+        self.store.update_site(sid,state='running')
+        self.store.recover()
+        self.assertEqual(self.store.site(sid)['state'],'interrupted');self.assertIsNone(self.store.queued_site())
+
+    def test_preview_paths_cannot_escape_site_directory(self):
+        site=self.generate()
+        self.assertIsNotNone(self.worker.file(site['id'],''))
+        for name in ('../test.db','assets/../../test.db','prompt.txt','..','x/y/z.css'):self.assertIsNone(self.worker.file(site['id'],name))
+        self.assertIsNone(self.worker.file('../../etc','index.html'))
+
+
+class SiteHTTPTests(unittest.TestCase):
+    tearDown=HTTPTests.tearDown
+    request=HTTPTests.request
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.store=Store(Path(self.temp.name)/'test.db')
+        self.engine=Engine(self.store,Mock(),SITE_SETTINGS)
+        self.sites=SiteWorker(self.store,{'offline':OfflineWriter(),'claude_code':claude_writer(FakeClaude({}))},Path(self.temp.name)/'sites')
+        self.server=ThreadingHTTPServer(('127.0.0.1',0),make_handler(self.store,self.engine,SITE_SETTINGS,'test-token',self.sites))
+        self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
+        self.base=f'http://127.0.0.1:{self.server.server_address[1]}'
+
+    def test_site_journey_preview_csp_limits_and_deletion(self):
+        with self.request('/api/campaigns',campaign(),'POST') as r:cid=json.load(r)['id']
+        self.engine.run(cid);lid=self.store.leads(cid)[0]['id']
+        with self.request(f'/api/leads/{lid}/sites',{'engine':'offline','objective':'visita','campaign_id':cid},'POST') as r:sid=json.load(r)['id']
+        self.sites.run(sid)
+        with self.request('/api/sites') as r:self.assertEqual(json.load(r)['sites'][0]['state'],'completed')
+        with self.request(f'/sites/{sid}/') as r:
+            self.assertIn("default-src 'none'",r.headers['Content-Security-Policy']);self.assertIn('text/html',r.headers['Content-Type'])
+        with self.request(f'/sites/{sid}/style.css') as r:self.assertIn('text/css',r.headers['Content-Type'])
+        for path in (f'/sites/{sid}/prompt.txt','/sites/nothex/','/sites/'+sid+'/%2e%2e/test.db'):
+            with self.assertRaises(urllib.error.HTTPError) as e:self.request(path)
+            self.assertEqual(e.exception.code,404)
+        with self.request(f'/api/leads/{lid}/sites',{'engine':'claude_code'},'POST') as r:self.assertEqual(r.status,201)
+        with self.assertRaises(urllib.error.HTTPError) as e:self.request(f'/api/leads/{lid}/sites',{'engine':'claude_code'},'POST')
+        self.assertEqual(e.exception.code,400)
+        with self.assertRaises(urllib.error.HTTPError) as e:self.request(f'/api/leads/{lid}',None,'DELETE')
+        self.assertEqual(e.exception.code,409)
+        queued=self.store.queued_site()
+        with self.request(f'/api/sites/{queued}/cancel',{},'POST') as r:self.assertEqual(r.status,200)
+        self.sites.run(queued);self.assertEqual(self.store.site(queued)['state'],'cancelled')
+        with self.request(f'/api/leads/{lid}',None,'DELETE') as r:self.assertEqual(r.status,200)
+        self.assertEqual(self.store.sites(),[]);self.assertFalse(self.sites.path(sid).exists())
 
 
 if __name__=='__main__':unittest.main()

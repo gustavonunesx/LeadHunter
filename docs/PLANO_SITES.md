@@ -1,6 +1,8 @@
 # Radar Local — plano do gerador de sites
 
-Versão 0.1 · 16 de outubro de 2026 · Complementa `docs/PLANO_COMPLETO.md`
+Versão 0.2 · 16 de outubro de 2026 · Complementa `docs/PLANO_COMPLETO.md`
+
+**Status:** S1 implementada e o motor da assinatura (texto) funcionando; fotos (S2/S3) pendentes. Detalhes na seção 9.
 
 ## 1. Resultado esperado
 
@@ -71,6 +73,26 @@ Estados do trabalho: `queued`, `running`, `completed`, `partial`, `failed`, `can
 
 **Por que o Claude aqui e não o Jev:** o Jev foi adotado para classificações curtas. Criar o site exige análise de imagens, critério visual e redação em português, o que pede um modelo geral com visão.
 
+### Motores de geração (`SITE_ENGINE`)
+
+Decisão de 16/10/2026: começar pela **assinatura Claude do operador**, com o terreno pronto para migrar para a API. Os três motores recebem o mesmo dossiê e devolvem o mesmo brief (`BRIEF_SCHEMA` em `radar/writers.py`); trocar de motor não muda o resto do sistema.
+
+| Motor | Como funciona | Cobrança | Estado |
+|---|---|---|---|
+| `claude_code` (padrão) | Executa `claude -p` com o login do Claude Code do computador, saída JSON validada por `--json-schema` | Limite de uso da assinatura Claude (não usa créditos de API) | Implementado |
+| `offline` | Textos neutros montados só com dados do cadastro | Nenhuma | Implementado; padrão para leads de demonstração |
+| `api` | SDK oficial `anthropic` com chave `ANTHROPIC_API_KEY` | Créditos da API, por token | Preparado (`ApiWriter`), não implementado |
+
+Cuidados do motor `claude_code`:
+
+- O contexto padrão do Claude Code (ferramentas, servidores MCP, skills, configurações) é substituído por `--system-prompt` próprio, `--strict-mcp-config`, `--disable-slash-commands`, `--setting-sources ""` e `--tools ""` (ou só `Read` quando houver fotos). Medido em 16/10/2026: sem isso, cada chamada carregava ~112 mil tokens; com isso, ~3,4 mil.
+- `ANTHROPIC_API_KEY` é removida do ambiente do processo, para que uma chave configurada para o futuro motor `api` não faça o Claude Code cobrar créditos em vez de usar a assinatura.
+- `--bare` não é usado porque desativa o login da assinatura.
+- O caminho do executável é detectado no PATH ou na extensão do VS Code; `CLAUDE_CODE_PATH` permite fixá-lo.
+- Uso fora do limite da assinatura aparece como erro na prévia; não há nova tentativa automática.
+
+### Configuração da chamada
+
 | Decisão | Escolha | Motivo |
 |---|---|---|
 | Modelo | `claude-opus-5-5` (configurável por `SITE_MODEL`) | Melhor qualidade de redação e julgamento visual; o operador pode trocar para `claude-sonnet-5-5` se a qualidade se mantiver no piloto |
@@ -81,7 +103,7 @@ Estados do trabalho: `queued`, `running`, `completed`, `partial`, `failed`, `can
 | Cache de prompt | `cache_control` no prompt de sistema (diretrizes de design e redação, estável) | Reduz o custo de entrada quando vários sites são gerados em sequência |
 | Recusa | parâmetro `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`) e checagem de `stop_reason` antes de ler o conteúdo | Recomendado para o Opus 5.5; recusa vira estado `failed` com mensagem clara |
 | Lote | API de Batches (50% do custo) **só** no futuro “gerar para selecionados” | O clique individual precisa de resposta em minutos; lote pode levar horas |
-| Biblioteca | SDK oficial `anthropic` como **dependência opcional** | O app continua rodando só com a biblioteca padrão; o gerador com IA pede `pip install anthropic` e mostra isso em Integrações |
+| Biblioteca (motor `api`) | SDK oficial `anthropic` como **dependência opcional** | O app continua rodando só com a biblioteca padrão; o motor `claude_code` não precisa de pacote extra |
 
 **Esquema de saída (resumo):**
 
@@ -101,7 +123,9 @@ As fontes ficam restritas a uma lista local de fontes livres; os templates rejei
 
 ## 7. Custos estimados
 
-Estimativa por site, com preços de tabela do `claude-opus-5-5` (US$ 4 por milhão de tokens de entrada, US$ 20 por milhão de saída) — **a confirmar no piloto com o uso real registrado**:
+**Medido em 16/10/2026 (motor `claude_code`, Opus 5.5, esforço alto, sem fotos):** 28 s, ~4,9 mil tokens de entrada e ~2,4 mil de saída por prévia — equivalente a US$ 0,075 em preço de API, mas debitado do limite da assinatura. Com fotos o consumo de entrada sobe; medir na S2.
+
+Estimativa original por site via API, com preços de tabela do `claude-opus-5-5` (US$ 4 por milhão de tokens de entrada, US$ 20 por milhão de saída) — **a confirmar no piloto com o uso real registrado**:
 
 | Item | Tokens aproximados | Custo aproximado |
 |---|---:|---:|
@@ -133,24 +157,26 @@ Com `claude-sonnet-5-5` o custo cai para cerca de metade; com lote, metade de no
 | Método | Rota | Uso |
 |---|---|---|
 | POST | `/api/leads/<id>/sites` | Cria trabalho (opções, fotos escolhidas, instruções) |
-| POST | `/api/leads/<id>/assets` | Envia fotos do operador (JSON base64, até 2 MB cada, 8 MB no total) |
+| POST | `/api/leads/<id>/assets` | Envia fotos do operador (JSON base64, até 2 MB cada, 8 MB no total) — **S2** |
 | GET | `/api/sites` | Lista para a bandeja (em andamento e recentes) |
 | GET | `/api/sites/<id>` | Detalhe, progresso, checklist |
 | POST | `/api/sites/<id>/cancel` | Cancelar |
 | DELETE | `/api/sites/<id>` | Excluir versão e arquivos |
 | GET | `/sites/<id>/…` | Prévia estática, com `Content-Security-Policy: default-src 'self'; script-src 'none'` |
-| GET | `/api/sites/<id>/download` | ZIP da versão |
+| GET | `/api/sites/<id>/download` | ZIP da versão — **S4** |
 
 **Painel:** seção **Site** na ficha, diálogo de criação, bandeja de produção (consulta a cada 2 s enquanto houver trabalho ativo, aproveitando o ciclo de atualização existente) e aviso de conclusão com link para a prévia. Status do Claude na tela de Integrações.
 
-**Configuração (`.env`):** `ANTHROPIC_API_KEY`, `SITE_MODEL=claude-opus-5-5`, `SITE_EFFORT=high`, `MAX_SITES_PER_DAY=20`, `SITE_ENRICH_GMB=false`.
+**Configuração (`.env`, ver `.env.example`):** `SITE_ENGINE=claude_code`, `SITE_MODEL=claude-opus-5-5`, `SITE_EFFORT=high`, `SITE_TIMEOUT=900`, `MAX_SITES_PER_DAY=20`, `CLAUDE_CODE_PATH` (opcional). Futuras: `ANTHROPIC_API_KEY` (motor `api`), `SITE_ENRICH_GMB` (S3).
+
+**Implementado na S1:** tabela `sites` (schema 2) com versão por lead; o custo/uso fica em `sites.usage` (assinatura não gera cobrança por chamada). `site_assets` e `api_calls.site_id` entram junto com fotos (S2) e motor `api`.
 
 ## 9. Fases
 
 | Fase | Entrega | Depende de | Aceite |
 |---|---|---|---|
-| **S1 — Base offline** | Tabelas, worker, rotas, bandeja, prévia em nova aba, templates e gerador **sem IA** (textos fixos por nicho) para leads de demonstração e importados | Nada | Fluxo completo no navegador sem chaves; testes automáticos e Playwright passam |
-| **S2 — Claude** | Adaptador com visão e saídas estruturadas, envio de fotos pelo operador, custos em `api_calls`, limite diário, verificações automáticas | Chave Anthropic | 5 sites de leads reais conferidos: nenhum dado factual divergente, nenhuma afirmação sem marcação, contraste AA, celular sem quebra |
+| **S1 — Base** ✅ 16/10/2026 | Tabela, worker, rotas, bandeja, prévia em nova aba com CSP sem scripts, 3 templates, verificações automáticas, motor `offline` e motor `claude_code` (texto) | Nada | 33 testes automáticos e 14 verificações Playwright aprovados; 1 prévia real gerada pela assinatura |
+| **S2 — Fotos e qualidade** | Envio de fotos pelo operador, análise visual (`--tools Read`), galeria e capa, `site_assets`; avaliação com leads reais | S1 | 5 sites de leads reais conferidos: nenhum dado factual divergente, nenhuma afirmação sem marcação, contraste AA, celular sem quebra |
 | **S3 — Fotos e dados do Google** | Campos extras do Maps + My Business Info; download com lista de domínios | **Validação ao vivo do DataForSEO (pendente)** | Origem de cada foto registrada; nenhum download fora da lista |
 | **S4 — Produtividade** | Nova versão com instruções, comparação de versões, ZIP, miniatura por Playwright, “gerar para selecionados” via lote | S2 | Operador gera 10 prévias em sequência sem travar o painel |
 | **S5 — Publicação (futuro)** | Publicar após aceite do cliente (hospedagem estática, domínio, formulário de contato) | Demanda comercial e termo de aceite | Fora do escopo agora |
@@ -178,8 +204,8 @@ Com `claude-sonnet-5-5` o custo cai para cerca de metade; com lote, metade de no
 | Lead já tem site | Aviso antes de criar; pode servir como proposta de redesenho |
 | Instagram sem API | Fotos só por envio manual do operador |
 
-**Decisões a validar com o operador antes da S2:**
+**Decisões tomadas em 16/10/2026:**
 
-1. Quais objetivos de contato oferecer: só telefone (`tel:`), ou também WhatsApp quando o operador confirmar que o número é WhatsApp?
-2. O ZIP exportado deve incluir uma página “prévia — não oficial” ou ir limpo?
-3. Orçamento mensal máximo para geração de sites.
+1. Contato: usar o telefone encontrado. Botão “Ligar” (`tel:`) sempre; botão “WhatsApp” (`wa.me`) quando o número for celular brasileiro (DDD + 9 dígitos começando com 9).
+2. ZIP exportado sai limpo, sem marca de prévia.
+3. Geração pela assinatura Claude (motor `claude_code`), sem orçamento em créditos de API; motor `api` preparado para o futuro.

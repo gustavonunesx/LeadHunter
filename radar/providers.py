@@ -139,4 +139,7 @@ def load_settings(root):
     return {"dfs_login":os.getenv("DATAFORSEO_LOGIN",""),"dfs_password":os.getenv("DATAFORSEO_PASSWORD",""),
             "jev_key":os.getenv("TYPESAFE_API_KEY",""),"jev_model":os.getenv("TYPESAFE_MODEL","jev-1.13.0"),
             "run_limit":int(os.getenv("MAX_CALLS_PER_CAMPAIGN","80")),
-            "daily_limit":int(os.getenv("MAX_CALLS_PER_DAY","200"))}
+            "daily_limit":int(os.getenv("MAX_CALLS_PER_DAY","200")),
+            "site_engine":os.getenv("SITE_ENGINE","claude_code"),"site_model":os.getenv("SITE_MODEL","claude-opus-5-5"),
+            "site_effort":os.getenv("SITE_EFFORT","high"),"site_timeout":int(os.getenv("SITE_TIMEOUT","900")),
+            "max_sites_per_day":int(os.getenv("MAX_SITES_PER_DAY","20")),"claude_code_path":os.getenv("CLAUDE_CODE_PATH","")}
